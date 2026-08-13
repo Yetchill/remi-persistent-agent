@@ -150,6 +150,7 @@ export function ChatPanel({ preview = false }: { preview?: boolean }) {
           mode: "speech",
           text: event.payload.text,
           source: "proactive",
+          placement: event.payload.placement,
         });
         proactiveTimerRef.current = window.setTimeout(() => {
           proactiveTimerRef.current = undefined;

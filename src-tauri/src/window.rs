@@ -1,5 +1,7 @@
 use serde::Serialize;
-use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, Position, Size, WebviewWindow};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, WebviewWindow,
+};
 
 use crate::platform;
 
@@ -9,6 +11,17 @@ const SETTINGS_WINDOW: &str = "settings-window";
 const BUBBLE_GAP: i32 = 2;
 const INTERACTIVE_BUBBLE_SIZE: (f64, f64) = (320.0, 176.0);
 const PROACTIVE_BUBBLE_SIZE: (f64, f64) = (300.0, 96.0);
+const BUBBLE_OPEN_INTERACTIVE_EVENT: &str = "bubble-open-interactive";
+const BUBBLE_PLACEMENT_CHANGED_EVENT: &str = "bubble-placement-changed";
+const BUBBLE_SHOW_PROACTIVE_EVENT: &str = "bubble-show-proactive";
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProactiveBubblePayload {
+    text: String,
+    duration_ms: u64,
+    placement: String,
+}
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,6 +186,12 @@ pub fn open_chat_bubble(app: AppHandle) -> Result<String, String> {
     let placement = position_chat_bubble(&app, false)?;
     bubble.show().map_err(|error| error.to_string())?;
     bubble.set_focus().map_err(|error| error.to_string())?;
+    bubble
+        .emit(BUBBLE_OPEN_INTERACTIVE_EVENT, ())
+        .map_err(|error| error.to_string())?;
+    bubble
+        .emit(BUBBLE_PLACEMENT_CHANGED_EVENT, placement)
+        .map_err(|error| error.to_string())?;
     Ok(placement.to_string())
 }
 
@@ -185,7 +204,11 @@ pub fn is_chat_bubble_visible(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn open_proactive_bubble(app: AppHandle) -> Result<Option<String>, String> {
+pub fn open_proactive_bubble(
+    app: AppHandle,
+    text: String,
+    duration_ms: u64,
+) -> Result<Option<String>, String> {
     let bubble = app
         .get_webview_window(CHAT_BUBBLE_WINDOW)
         .ok_or_else(|| "Chat bubble window is unavailable".to_string())?;
@@ -200,6 +223,17 @@ pub fn open_proactive_bubble(app: AppHandle) -> Result<Option<String>, String> {
         .map_err(|error| error.to_string())?;
     let placement = position_chat_bubble(&app, false)?;
     bubble.show().map_err(|error| error.to_string())?;
+    if let Err(error) = bubble.emit(
+        BUBBLE_SHOW_PROACTIVE_EVENT,
+        ProactiveBubblePayload {
+            text,
+            duration_ms: duration_ms.clamp(3_000, 8_000),
+            placement: placement.to_string(),
+        },
+    ) {
+        let _ = bubble.hide();
+        return Err(error.to_string());
+    }
     Ok(Some(placement.to_string()))
 }
 

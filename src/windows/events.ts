@@ -19,4 +19,5 @@ export type BubbleRequestResult = {
 export type ProactiveBubbleEvent = {
   text: string;
   durationMs: number;
+  placement: "above" | "below";
 };

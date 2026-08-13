@@ -9,7 +9,6 @@ This document is a short map of the current implementation for contributors.
 3. `src-tauri/src/memory.rs` — selective long-term memory lifecycle and retrieval.
 4. `src-tauri/src/database.rs` — SQLite schema and persistence operations.
 5. `src/windows/PetWindow.tsx` — desktop-body composition, heartbeat timers, and the Runtime instance.
-6. `research/README.md` — deterministic memory evaluation harness.
 
 ## System Overview
 
@@ -60,15 +59,19 @@ Candidate
   → persist memory, relation, and operation trace
 ```
 
-Memory status is `active`, `outdated`, `archived`, or `merged`. Relations are `supports`, `contradicts`, `supersedes`, `derived_from`, and `merged_into`. Retrieval expires time-bound memories, searches active memories only, then ranks text relevance, recency, importance, confidence, and source reliability. The current policy is deterministic `evolving-memory-v1`; no vector database is required.
+Memory status is `active`, `outdated`, `archived`, or `merged`. Relations are `supports`, `contradicts`, `supersedes`, `derived_from`, and `merged_into`. Retrieval expires time-bound memories and searches active memories only. User queries must clear a lexical relevance floor; English uses normalized word tokens while CJK text uses local character bigrams. Agent Heartbeat uses a separate ambient ranking over recency, importance, confidence, and source reliability. The current policy is deterministic `evolving-memory-v1`; no vector database is required.
 
-Provenance is explicit: `user_explicit`, `user_correction`, `agent_inferred`, `conversation`, `heartbeat`, `reflection`, or `system`. Heartbeat observations never masquerade as user statements. The Memory Inspector uses the Rust memory API—not SQL from React—to search and inspect provenance/relations, then edit, archive, restore, delete, or pin. Pin boosts importance once but never bypasses relevance retrieval. Consolidation currently performs conservative exact-duplicate merging only.
+Provenance is explicit: `user_explicit`, `user_correction`, `agent_inferred`, `conversation`, `heartbeat`, `reflection`, or `system`. Heartbeat observations never masquerade as user statements. Automatic supersession is limited to explicit fact/preference slots, and lower-reliability inferred or heartbeat candidates cannot replace user-established facts. The Memory Inspector uses the Rust memory API—not SQL from React—to search and inspect provenance/relations, then edit, archive, restore, delete, or pin. Pin boosts importance once but never bypasses relevance retrieval. Consolidation currently performs conservative exact-duplicate merging only.
 
 ## Body Heartbeat vs Agent Heartbeat
 
 `BODY_HEARTBEAT` is local and trace-only. Body wandering, legal screen coordinates, and animation are local mechanisms and consume no LLM calls.
 
-`AGENT_HEARTBEAT` is optional and may ask the Provider for one high-level choice: prefer `noop`, or choose `wander`, `sleep`, or a brief `speak`. Proactive speech is rejected locally when Proactive Interaction is off, Do Not Disturb is on, quiet hours are active, the user interacted recently, the agent is busy, cooldown is active, or the hourly limit is reached. Frequency is a policy multiplier, not a random speaking timer. Behavior settings have one source of truth: SQLite `app_settings`.
+`AGENT_HEARTBEAT` is optional and may ask the Provider for one high-level choice: prefer `noop`, or choose `wander`, `sleep`, or a brief `speak`. Proactive speech is rejected locally when Proactive Interaction is off, Do Not Disturb is on, quiet hours are active, the user interacted recently, the agent is busy, cooldown is active, or the hourly limit is reached. Recursive one-shot scheduling adds bounded jitter around the configured interval and schedules the next run only after completion. Manual and automatic triggers share one in-flight gate. Frequency is a policy multiplier, not a random speaking timer. Behavior settings have one source of truth: SQLite `app_settings`.
+
+## Bubble Delivery
+
+Native window commands own the order of bubble delivery: size, position, show, then emit the renderer event. This prevents a hidden-window event race and ensures proactive payloads carry their final `above`/`below` placement. Heartbeat speech updates an already-open interactive bubble; otherwise the native adapter opens a compact timed speech bubble without stealing focus.
 
 ## Pet Packs and Companion Profiles
 
@@ -91,7 +94,6 @@ Companion Profile format v1 is readable JSON managed by `src-tauri/src/profile.r
 | Provider selection         | SQLite catalog plus in-memory API keys                     |
 | Pet appearance             | Pet Pack catalog + `active_pet_pack_id` metadata           |
 | Portable companion profile | Profile format v1 JSON; Provider secrets stay local        |
-| Research scenarios/results | `research/`                                                |
 
 ## Directory Map
 
@@ -113,10 +115,6 @@ src-tauri/src/
   provider.rs  OpenAI-compatible transport and LLM trace
   trace.rs     event/action trace commands
   window.rs    macOS window/work-area operations
-  bin/         offline research executables
-research/
-  scenarios/   readable multi-session fixtures
-  results/     generated JSON/CSV evidence
 ```
 
 ## Current Boundaries

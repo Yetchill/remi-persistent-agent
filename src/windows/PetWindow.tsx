@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAction } from "../agent/actions";
 import type { ConversationMessage } from "../agent/context";
 import type { AgentEvent } from "../agent/events";
+import { nextAgentHeartbeatDelayMs } from "../agent/heartbeat";
 import { AgentRuntime } from "../agent/runtime";
 import {
   estimateProactiveBubbleDuration,
@@ -46,10 +47,8 @@ import {
   AGENT_HEARTBEAT_FINISHED,
   BUBBLE_AGENT_MESSAGE,
   BUBBLE_CONVERSATION_CLEARED,
-  BUBBLE_OPEN_INTERACTIVE,
   BUBBLE_PLACEMENT_CHANGED,
   BUBBLE_REQUEST_FINISHED,
-  BUBBLE_SHOW_PROACTIVE,
   BUBBLE_USER_MESSAGE,
   PET_STATE_CHANGED,
   PROFILE_IMPORTED,
@@ -156,8 +155,7 @@ export function PetWindow() {
   );
 
   const receiveMessage = useCallback(
-    (message: ConversationMessage, event?: AgentEvent) => {
-      if (event?.type === "AGENT_HEARTBEAT") return;
+    (message: ConversationMessage) => {
       void emitTo("chat-bubble-window", BUBBLE_AGENT_MESSAGE, message);
     },
     [],
@@ -168,18 +166,11 @@ export function PetWindow() {
       if (action.type === "speak") {
         if (visualStateRef.current !== "sleep") startTalkVisual(action.text);
         if (event.type === "AGENT_HEARTBEAT") {
-          const visible = await invoke<boolean>("is_chat_bubble_visible");
-          if (!visible) {
-            const text = truncateSpeechText(action.text);
-            await emitTo("chat-bubble-window", BUBBLE_SHOW_PROACTIVE, {
-              text,
-              durationMs: estimateProactiveBubbleDuration(text),
-            });
-            const placement = await invoke<BubblePlacement | null>(
-              "open_proactive_bubble",
-            );
-            if (placement) await emitBubblePlacement(placement);
-          }
+          const text = truncateSpeechText(action.text);
+          await invoke<BubblePlacement | null>("open_proactive_bubble", {
+            text,
+            durationMs: estimateProactiveBubbleDuration(text),
+          });
         }
         return;
       }
@@ -393,12 +384,24 @@ export function PetWindow() {
 
   useEffect(() => {
     if (!initialized || !settings.agentHeartbeat) return;
-    const agentTimer = window.setInterval(() => {
-      void runAgentHeartbeat().catch((error: unknown) =>
-        console.error("Agent heartbeat failed", error),
-      );
-    }, settings.agentHeartbeatIntervalSeconds * 1_000);
-    return () => window.clearInterval(agentTimer);
+    let cancelled = false;
+    let agentTimer: number | undefined;
+    const scheduleNext = () => {
+      agentTimer = window.setTimeout(() => {
+        void runAgentHeartbeat()
+          .catch((error: unknown) =>
+            console.error("Agent heartbeat failed", error),
+          )
+          .finally(() => {
+            if (!cancelled) scheduleNext();
+          });
+      }, nextAgentHeartbeatDelayMs(settings.agentHeartbeatIntervalSeconds));
+    };
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      if (agentTimer !== undefined) window.clearTimeout(agentTimer);
+    };
   }, [
     initialized,
     runAgentHeartbeat,
@@ -484,9 +487,7 @@ export function PetWindow() {
 
   async function forceOpenInteractiveBubble() {
     await wakeIfNeeded();
-    await emitTo("chat-bubble-window", BUBBLE_OPEN_INTERACTIVE);
-    const placement = await invoke<BubblePlacement>("open_chat_bubble");
-    await emitBubblePlacement(placement);
+    await invoke<BubblePlacement>("open_chat_bubble");
     await runtimeRef.current?.recordPetClick();
   }
 

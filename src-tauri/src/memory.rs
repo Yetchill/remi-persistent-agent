@@ -287,12 +287,17 @@ fn memory_slot(content: &str) -> Option<&'static str> {
     if contains_any(&lower, &["work as", "works as", "职业", "工作是"]) {
         return Some("fact:occupation");
     }
-    if contains_any(
-        &lower,
-        &["prefer", "favorite", "likes", "偏好", "喜欢", "最爱"],
-    ) {
-        return Some("preference:general");
+    if contains_any(&lower, &["color", "colour", "颜色"]) {
+        return Some("preference:color");
     }
+    if contains_any(&lower, &["music", "song", "音乐", "歌"]) {
+        return Some("preference:music");
+    }
+    if contains_any(&lower, &["food", "dish", "吃", "食物", "菜"]) {
+        return Some("preference:food");
+    }
+    // Unknown preferences deliberately have no shared slot. Treating every
+    // preference as one field would make unrelated facts supersede each other.
     None
 }
 
@@ -320,15 +325,29 @@ fn terms(text: &str) -> HashSet<String> {
     let mut result: HashSet<String> = lower
         .split(|character: char| !character.is_alphanumeric())
         .filter(|term| !term.is_empty())
-        .map(ToString::to_string)
+        .flat_map(|term| {
+            let mut variants = vec![term.to_string()];
+            if term.is_ascii() && term.len() > 3 && term.ends_with('s') {
+                variants.push(term.trim_end_matches('s').to_string());
+            }
+            variants
+        })
         .collect();
-    let compact: Vec<char> = lower
-        .chars()
-        .filter(|character| character.is_alphanumeric())
-        .collect();
-    for pair in compact.windows(2) {
-        result.insert(pair.iter().collect());
+    let mut non_ascii_run = Vec::new();
+    let flush_run = |run: &mut Vec<char>, terms: &mut HashSet<String>| {
+        for pair in run.windows(2) {
+            terms.insert(pair.iter().collect());
+        }
+        run.clear();
+    };
+    for character in lower.chars() {
+        if character.is_alphanumeric() && !character.is_ascii() {
+            non_ascii_run.push(character);
+        } else {
+            flush_run(&mut non_ascii_run, &mut result);
+        }
     }
+    flush_run(&mut non_ascii_run, &mut result);
     result
 }
 
@@ -480,8 +499,42 @@ pub fn write_candidate(
         "semantic" => 0.7,
         _ => 0.6,
     };
+    let confidence = candidate_confidence(&source);
 
     if let Some(previous) = related {
+        if source_reliability(Some(source.as_str()))
+            < source_reliability(previous.source_type.as_deref())
+        {
+            let related_ids = vec![previous.id.clone()];
+            let lifecycle = decision(
+                "IGNORE",
+                &kind,
+                &content,
+                &source,
+                valid_from,
+                valid_to,
+                related_ids.clone(),
+                "lower_reliability_conflict",
+            );
+            database
+                .insert_memory_operation(&operation(
+                    Some(previous.id.clone()),
+                    "IGNORE",
+                    now,
+                    candidate.source_ref,
+                    "lower_reliability_conflict",
+                    &related_ids,
+                    lifecycle.metadata.clone(),
+                ))
+                .map_err(|error| error.to_string())?;
+            return Ok(MemoryWriteResult {
+                decision: "IGNORE".to_string(),
+                reason: "A lower-reliability candidate cannot replace an established memory"
+                    .to_string(),
+                memory: Some(previous),
+                lifecycle,
+            });
+        }
         let previous_normalized = normalize(&previous.content);
         let enrichment = normalize(&content).contains(&previous_normalized)
             && !has_change_signal(&content)
@@ -493,7 +546,7 @@ pub fn write_candidate(
                     &content,
                     &kind,
                     importance.max(previous.importance),
-                    previous.confidence.max(0.9),
+                    previous.confidence.max(confidence),
                     now,
                     valid_from.or(previous.valid_from),
                     valid_to.or(previous.valid_to),
@@ -535,7 +588,7 @@ pub fn write_candidate(
                 kind: kind.clone(),
                 content: content.clone(),
                 importance,
-                confidence: 0.9,
+                confidence,
                 created_at: now,
                 valid_from,
                 valid_to,
@@ -600,7 +653,7 @@ pub fn write_candidate(
             kind: kind.clone(),
             content: content.clone(),
             importance,
-            confidence: 0.9,
+            confidence,
             created_at: now,
             valid_from,
             valid_to,
@@ -649,6 +702,16 @@ fn source_reliability(source: Option<&str>) -> f64 {
     }
 }
 
+fn candidate_confidence(source: &str) -> f64 {
+    match source {
+        "user_explicit" | "user_correction" => 1.0,
+        "conversation" | "system" => 0.85,
+        "reflection" | "agent_inferred" => 0.7,
+        "heartbeat" => 0.5,
+        _ => 0.6,
+    }
+}
+
 fn expire(database: &Database, now: i64) -> Result<(), String> {
     for id in database
         .expire_memories(now)
@@ -676,19 +739,31 @@ pub fn retrieve(
     now: i64,
 ) -> Result<Vec<Memory>, String> {
     expire(database, now)?;
+    let ambient = normalize(query) == "agent_heartbeat";
     let mut scored: Vec<(f64, Memory)> = database
         .list_active_memories()
         .map_err(|error| error.to_string())?
         .into_iter()
-        .map(|memory| {
+        .filter_map(|memory| {
+            let text_relevance = relevance(query, &memory.content);
+            if !ambient && text_relevance < 0.05 {
+                return None;
+            }
             let age_days = (now - memory.updated_at).max(0) as f64 / DAY_MS as f64;
             let recency = 1.0 / (1.0 + age_days / 30.0);
-            let score = 0.45 * relevance(query, &memory.content)
-                + 0.15 * recency
-                + 0.15 * memory.importance
-                + 0.15 * memory.confidence
-                + 0.1 * source_reliability(memory.source_type.as_deref());
-            (score, memory)
+            let score = if ambient {
+                0.3 * recency
+                    + 0.3 * memory.importance
+                    + 0.25 * memory.confidence
+                    + 0.15 * source_reliability(memory.source_type.as_deref())
+            } else {
+                0.5 * text_relevance
+                    + 0.15 * recency
+                    + 0.15 * memory.importance
+                    + 0.1 * memory.confidence
+                    + 0.1 * source_reliability(memory.source_type.as_deref())
+            };
+            Some((score, memory))
         })
         .collect();
     scored.sort_by(|left, right| right.0.total_cmp(&left.0));
@@ -707,7 +782,11 @@ pub fn retrieve(
             "RETRIEVE",
             now,
             None,
-            "ranked_active_only",
+            if ambient {
+                "ambient_active_context"
+            } else {
+                "relevant_active_only"
+            },
             &ids,
             json!({"query": query, "memoryIds": ids, "policyVersion": MEMORY_POLICY_VERSION}),
         ))
@@ -1161,6 +1240,63 @@ mod tests {
                     relation.relation == "supersedes" && relation.target_id == coffee.id
                 })
         );
+    }
+
+    #[test]
+    fn unrelated_preferences_do_not_supersede_each_other() {
+        let database = Database::in_memory().unwrap();
+        write_candidate(
+            &database,
+            candidate("User likes hiking on weekends", "preference-1"),
+        )
+        .unwrap();
+        let result = write_candidate(
+            &database,
+            candidate("User likes reading science fiction", "preference-2"),
+        )
+        .unwrap();
+        assert_eq!(result.decision, "ADD");
+        assert_eq!(database.list_active_memories().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn inferred_memory_cannot_replace_an_explicit_user_fact() {
+        let database = Database::in_memory().unwrap();
+        let original = write_candidate(
+            &database,
+            candidate("User prefers coffee", "explicit-preference"),
+        )
+        .unwrap()
+        .memory
+        .unwrap();
+        let mut inferred = candidate(
+            "User no longer drinks coffee and now prefers tea",
+            "heartbeat-inference",
+        );
+        inferred.source_type = Some("heartbeat".to_string());
+        let result = write_candidate(&database, inferred).unwrap();
+        assert_eq!(result.decision, "IGNORE");
+        assert_eq!(result.lifecycle.reason_label, "lower_reliability_conflict");
+        assert_eq!(database.get_memory(&original.id).unwrap().status, "active");
+        assert_eq!(database.list_active_memories().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn retrieval_avoids_irrelevant_context_but_supports_ambient_heartbeat() {
+        let database = Database::in_memory().unwrap();
+        write_candidate(
+            &database,
+            candidate("User's cat is named Nainiu", "retrieval-1"),
+        )
+        .unwrap();
+        assert!(
+            retrieve(&database, "Rust compiler optimization flags", 6, 1_000_001)
+                .unwrap()
+                .is_empty()
+        );
+        let ambient = retrieve(&database, "AGENT_HEARTBEAT", 6, 1_000_002).unwrap();
+        assert_eq!(ambient.len(), 1);
+        assert!(ambient[0].content.contains("Nainiu"));
     }
 
     #[test]

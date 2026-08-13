@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../settings/settings";
 import type { PetState } from "../pet/petState";
-import { canSpeakProactively } from "./heartbeat";
+import { canSpeakProactively, nextAgentHeartbeatDelayMs } from "./heartbeat";
 
 const state: PetState = {
   energy: 80,
@@ -14,6 +14,13 @@ const state: PetState = {
 };
 
 describe("Agent Heartbeat proactive policy", () => {
+  it("schedules a jittered one-shot heartbeat around the configured interval", () => {
+    expect(nextAgentHeartbeatDelayMs(600, () => 0)).toBe(450_000);
+    expect(nextAgentHeartbeatDelayMs(600, () => 0.5)).toBe(600_000);
+    expect(nextAgentHeartbeatDelayMs(600, () => 1)).toBe(750_000);
+    expect(nextAgentHeartbeatDelayMs(1, () => 0.5)).toBe(30_000);
+  });
+
   it("absolutely blocks speech while proactive interaction is off", () => {
     expect(canSpeakProactively(DEFAULT_SETTINGS, state, [], 10_000)).toEqual({
       allowed: false,

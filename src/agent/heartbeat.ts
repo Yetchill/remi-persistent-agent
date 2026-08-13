@@ -3,6 +3,8 @@ import type { AppSettings } from "../settings/settings";
 
 const RECENT_USER_WINDOW_MS = 5 * 60_000;
 const HOUR_MS = 60 * 60_000;
+const HEARTBEAT_JITTER_MIN = 0.75;
+const HEARTBEAT_JITTER_RANGE = 0.5;
 
 export type HeartbeatPolicyDecision = {
   allowed: boolean;
@@ -11,6 +13,21 @@ export type HeartbeatPolicyDecision = {
 
 export function canRunAgentHeartbeat(settings: AppSettings) {
   return settings.agentHeartbeat;
+}
+
+/**
+ * Avoids a mechanical fixed cadence while keeping the user's configured
+ * interval as the center of the scheduling window.
+ */
+export function nextAgentHeartbeatDelayMs(
+  intervalSeconds: number,
+  random = Math.random,
+) {
+  const baseMs = Math.max(30, intervalSeconds) * 1_000;
+  const boundedRandom = Math.min(1, Math.max(0, random()));
+  return Math.round(
+    baseMs * (HEARTBEAT_JITTER_MIN + boundedRandom * HEARTBEAT_JITTER_RANGE),
+  );
 }
 
 function minutesOfDay(value: string) {
