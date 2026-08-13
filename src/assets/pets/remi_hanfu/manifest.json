@@ -1,0 +1,17 @@
+{
+  "id": "remi-hanfu-v1",
+  "name": "Remi Hanfu",
+  "displayName": "Remi Hanfu Character v1",
+  "version": "1.0",
+  "defaultState": "idle",
+  "states": {
+    "idle": ["idle_1.png", "idle_2.png", "idle_3.png"],
+    "talk": ["talk_1.png", "talk_2.png", "talk_3.png"],
+    "think": ["think.png"],
+    "sleep": ["sleep.png"]
+  },
+  "suggestedLoops": {
+    "idle": ["idle_1.png", "idle_2.png", "idle_3.png", "idle_2.png"],
+    "talk": ["talk_1.png", "talk_2.png", "talk_3.png", "talk_2.png"]
+  }
+}
