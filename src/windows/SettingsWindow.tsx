@@ -76,11 +76,6 @@ export function SettingsWindow({ preview = false }: { preview?: boolean }) {
         void invoke("hide_current_window");
       }),
     );
-    track(
-      getCurrentWindow().onFocusChanged(({ payload }) => {
-        if (payload) refresh();
-      }),
-    );
     return () => {
       disposed = true;
       unlisteners.forEach((unlisten) => unlisten());
