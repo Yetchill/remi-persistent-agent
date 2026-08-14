@@ -71,7 +71,7 @@ Provenance is explicit: `user_explicit`, `user_correction`, `agent_inferred`, `c
 
 ## Bubble Delivery
 
-Native window commands own the order of bubble delivery: size, position, show, then emit the renderer event. This prevents a hidden-window event race and ensures proactive payloads carry their final `above`/`below` placement. Heartbeat speech updates an already-open interactive bubble; otherwise the native adapter opens a compact timed speech bubble without stealing focus.
+Native window commands own the order of bubble delivery: size, position, show, then emit the renderer event. This prevents a hidden-window event race and ensures speech payloads carry their final `above`/`below` placement. If the user leaves the interactive bubble while a response is pending, the validated `speak` action reopens a compact, timed reply bubble without stealing focus. Heartbeat speech uses the same delivery path. An already-open interactive bubble is updated in place, and clicking any speech bubble expands it back into the input-capable view.
 
 ## Pet Packs and Companion Profiles
 
@@ -83,7 +83,7 @@ Companion Profile format v1 is readable JSON managed by `src-tauri/src/profile.r
 
 | Concern                    | Source of truth                                            |
 | -------------------------- | ---------------------------------------------------------- |
-| Product overview           | `README.md`                                                 |
+| Product overview           | `README.md`                                                |
 | Identity/persona           | runtime app-data `SOUL.md`; seeded from `src/soul/SOUL.md` |
 | Agent pipeline             | `src/agent/runtime.ts`                                     |
 | Action contract            | `src/agent/actions.ts`, `src/agent/context.ts`             |

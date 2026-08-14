@@ -8,7 +8,7 @@ import type { AgentEvent } from "../agent/events";
 import { nextAgentHeartbeatDelayMs } from "../agent/heartbeat";
 import { AgentRuntime } from "../agent/runtime";
 import {
-  estimateProactiveBubbleDuration,
+  estimateSpeechBubbleDuration,
   truncateSpeechText,
   type BubblePlacement,
 } from "../chat/bubbleState";
@@ -154,22 +154,23 @@ export function PetWindow() {
     [applyPetState, applyVisualState, stopTimedVisual],
   );
 
-  const receiveMessage = useCallback(
-    (message: ConversationMessage) => {
-      void emitTo("chat-bubble-window", BUBBLE_AGENT_MESSAGE, message);
-    },
-    [],
-  );
+  const receiveMessage = useCallback((message: ConversationMessage) => {
+    void emitTo("chat-bubble-window", BUBBLE_AGENT_MESSAGE, message);
+  }, []);
 
   const receiveExecutedAction = useCallback(
     async (event: AgentEvent, action: AgentAction) => {
       if (action.type === "speak") {
         if (visualStateRef.current !== "sleep") startTalkVisual(action.text);
-        if (event.type === "AGENT_HEARTBEAT") {
-          const text = truncateSpeechText(action.text);
-          await invoke<BubblePlacement | null>("open_proactive_bubble", {
-            text,
-            durationMs: estimateProactiveBubbleDuration(text),
+        if (event.type === "AGENT_HEARTBEAT" || event.type === "USER_MESSAGE") {
+          const preview = truncateSpeechText(action.text);
+          await invoke<BubblePlacement | null>("open_speech_bubble", {
+            text: action.text,
+            durationMs: estimateSpeechBubbleDuration(preview),
+            source:
+              event.type === "AGENT_HEARTBEAT"
+                ? "proactive"
+                : "user_conversation",
           });
         }
         return;

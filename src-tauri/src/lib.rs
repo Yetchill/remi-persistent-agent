@@ -33,7 +33,7 @@ pub fn run() {
             window::set_pet_window_size,
             window::open_chat_bubble,
             window::is_chat_bubble_visible,
-            window::open_proactive_bubble,
+            window::open_speech_bubble,
             window::hide_current_window,
             window::sync_chat_bubble_position,
             window::open_settings_window,

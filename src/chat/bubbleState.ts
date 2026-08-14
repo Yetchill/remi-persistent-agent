@@ -9,12 +9,14 @@ export type BubbleState = {
   placement: BubblePlacement;
 };
 
-export type ProactiveBubblePayload = {
+export type SpeechBubblePayload = {
   text: string;
   durationMs: number;
+  source: BubbleSource;
+  placement: BubblePlacement;
 };
 
-export function estimateProactiveBubbleDuration(text: string) {
+export function estimateSpeechBubbleDuration(text: string) {
   return Math.min(8_000, Math.max(3_000, 2_400 + text.trim().length * 90));
 }
 

@@ -10,16 +10,17 @@ const CHAT_BUBBLE_WINDOW: &str = "chat-bubble-window";
 const SETTINGS_WINDOW: &str = "settings-window";
 const BUBBLE_GAP: i32 = 2;
 const INTERACTIVE_BUBBLE_SIZE: (f64, f64) = (320.0, 176.0);
-const PROACTIVE_BUBBLE_SIZE: (f64, f64) = (300.0, 96.0);
+const SPEECH_BUBBLE_SIZE: (f64, f64) = (300.0, 96.0);
 const BUBBLE_OPEN_INTERACTIVE_EVENT: &str = "bubble-open-interactive";
 const BUBBLE_PLACEMENT_CHANGED_EVENT: &str = "bubble-placement-changed";
-const BUBBLE_SHOW_PROACTIVE_EVENT: &str = "bubble-show-proactive";
+const BUBBLE_SHOW_SPEECH_EVENT: &str = "bubble-show-speech";
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProactiveBubblePayload {
+struct SpeechBubblePayload {
     text: String,
     duration_ms: u64,
+    source: String,
     placement: String,
 }
 
@@ -204,11 +205,15 @@ pub fn is_chat_bubble_visible(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn open_proactive_bubble(
+pub fn open_speech_bubble(
     app: AppHandle,
     text: String,
     duration_ms: u64,
+    source: String,
 ) -> Result<Option<String>, String> {
+    if !matches!(source.as_str(), "proactive" | "user_conversation") {
+        return Err("Unknown speech bubble source".to_string());
+    }
     let bubble = app
         .get_webview_window(CHAT_BUBBLE_WINDOW)
         .ok_or_else(|| "Chat bubble window is unavailable".to_string())?;
@@ -217,17 +222,18 @@ pub fn open_proactive_bubble(
     }
     bubble
         .set_size(Size::Logical(LogicalSize::new(
-            PROACTIVE_BUBBLE_SIZE.0,
-            PROACTIVE_BUBBLE_SIZE.1,
+            SPEECH_BUBBLE_SIZE.0,
+            SPEECH_BUBBLE_SIZE.1,
         )))
         .map_err(|error| error.to_string())?;
     let placement = position_chat_bubble(&app, false)?;
     bubble.show().map_err(|error| error.to_string())?;
     if let Err(error) = bubble.emit(
-        BUBBLE_SHOW_PROACTIVE_EVENT,
-        ProactiveBubblePayload {
+        BUBBLE_SHOW_SPEECH_EVENT,
+        SpeechBubblePayload {
             text,
             duration_ms: duration_ms.clamp(3_000, 8_000),
+            source,
             placement: placement.to_string(),
         },
     ) {

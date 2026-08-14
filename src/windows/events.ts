@@ -2,7 +2,7 @@ export const BUBBLE_USER_MESSAGE = "bubble-user-message";
 export const BUBBLE_AGENT_MESSAGE = "bubble-agent-message";
 export const BUBBLE_REQUEST_FINISHED = "bubble-request-finished";
 export const BUBBLE_OPEN_INTERACTIVE = "bubble-open-interactive";
-export const BUBBLE_SHOW_PROACTIVE = "bubble-show-proactive";
+export const BUBBLE_SHOW_SPEECH = "bubble-show-speech";
 export const BUBBLE_PLACEMENT_CHANGED = "bubble-placement-changed";
 export const SETTINGS_CHANGED = "settings-changed";
 export const PET_STATE_CHANGED = "pet-state-changed";
@@ -16,8 +16,9 @@ export type BubbleRequestResult = {
   error?: string;
 };
 
-export type ProactiveBubbleEvent = {
+export type SpeechBubbleEvent = {
   text: string;
   durationMs: number;
+  source: "proactive" | "user_conversation";
   placement: "above" | "below";
 };

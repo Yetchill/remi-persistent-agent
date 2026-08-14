@@ -3,7 +3,11 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ConversationMessage } from "../agent/context";
-import type { BubblePlacement, BubbleState } from "./bubbleState";
+import {
+  truncateSpeechText,
+  type BubblePlacement,
+  type BubbleState,
+} from "./bubbleState";
 import { getRecentWorkingMessages } from "../memory/working";
 import {
   getProviderCatalog,
@@ -17,11 +21,11 @@ import {
   BUBBLE_OPEN_INTERACTIVE,
   BUBBLE_PLACEMENT_CHANGED,
   BUBBLE_REQUEST_FINISHED,
-  BUBBLE_SHOW_PROACTIVE,
+  BUBBLE_SHOW_SPEECH,
   BUBBLE_USER_MESSAGE,
   SETTINGS_CHANGED,
   type BubbleRequestResult,
-  type ProactiveBubbleEvent,
+  type SpeechBubbleEvent,
 } from "../windows/events";
 
 const INITIAL_BUBBLE_STATE: BubbleState = {
@@ -144,12 +148,12 @@ export function ChatPanel({ preview = false }: { preview?: boolean }) {
       }),
     );
     track(
-      listen<ProactiveBubbleEvent>(BUBBLE_SHOW_PROACTIVE, (event) => {
+      listen<SpeechBubbleEvent>(BUBBLE_SHOW_SPEECH, (event) => {
         cancelProactiveTimer();
         updateBubble({
           mode: "speech",
           text: event.payload.text,
-          source: "proactive",
+          source: event.payload.source,
           placement: event.payload.placement,
         });
         proactiveTimerRef.current = window.setTimeout(() => {
@@ -241,7 +245,7 @@ export function ChatPanel({ preview = false }: { preview?: boolean }) {
         aria-label={`和 ${petName} 聊天`}
         onClick={() => void openInteractive()}
       >
-        <span>{bubble.text}</span>
+        <span>{truncateSpeechText(bubble.text)}</span>
       </button>
     );
   }
