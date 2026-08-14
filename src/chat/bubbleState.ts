@@ -1,5 +1,5 @@
 export type BubbleMode = "hidden" | "speech" | "interactive";
-export type BubblePlacement = "above" | "below";
+export type BubblePlacement = "above" | "below" | "left" | "right";
 export type BubbleSource = "proactive" | "user_conversation";
 
 export type BubbleState = {
@@ -17,7 +17,8 @@ export type SpeechBubblePayload = {
 };
 
 export function estimateSpeechBubbleDuration(text: string) {
-  return Math.min(8_000, Math.max(3_000, 2_400 + text.trim().length * 90));
+  const characterCount = Array.from(text.trim()).length;
+  return Math.min(20_000, Math.max(3_200, 2_600 + characterCount * 85));
 }
 
 export function truncateSpeechText(text: string, maxCharacters = 120) {

@@ -9,7 +9,6 @@ import { nextAgentHeartbeatDelayMs } from "../agent/heartbeat";
 import { AgentRuntime } from "../agent/runtime";
 import {
   estimateSpeechBubbleDuration,
-  truncateSpeechText,
   type BubblePlacement,
 } from "../chat/bubbleState";
 import {
@@ -163,10 +162,9 @@ export function PetWindow() {
       if (action.type === "speak") {
         if (visualStateRef.current !== "sleep") startTalkVisual(action.text);
         if (event.type === "AGENT_HEARTBEAT" || event.type === "USER_MESSAGE") {
-          const preview = truncateSpeechText(action.text);
           await invoke<BubblePlacement | null>("open_speech_bubble", {
             text: action.text,
-            durationMs: estimateSpeechBubbleDuration(preview),
+            durationMs: estimateSpeechBubbleDuration(action.text),
             source:
               event.type === "AGENT_HEARTBEAT"
                 ? "proactive"

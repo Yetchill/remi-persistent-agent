@@ -110,6 +110,20 @@ button:disabled {
   margin: 16px 10px 0;
 }
 
+.chat-bubble[data-placement="left"],
+.speech-bubble[data-placement="left"] {
+  width: calc(100% - 16px);
+  height: calc(100% - 20px);
+  margin: 10px 16px 10px 0;
+}
+
+.chat-bubble[data-placement="right"],
+.speech-bubble[data-placement="right"] {
+  width: calc(100% - 16px);
+  height: calc(100% - 20px);
+  margin: 10px 0 10px 16px;
+}
+
 .chat-bubble::after,
 .speech-bubble::after {
   position: fixed;
@@ -128,6 +142,27 @@ button:disabled {
   top: 4px;
   bottom: auto;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.chat-bubble[data-placement="left"]::after,
+.speech-bubble[data-placement="left"]::after {
+  top: calc(50% - 8px);
+  right: 4px;
+  bottom: auto;
+  left: auto;
+  width: 12px;
+  height: 16px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.chat-bubble[data-placement="right"]::after,
+.speech-bubble[data-placement="right"]::after {
+  top: calc(50% - 8px);
+  bottom: auto;
+  left: 4px;
+  width: 12px;
+  height: 16px;
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
 }
 
 .speech-bubble {

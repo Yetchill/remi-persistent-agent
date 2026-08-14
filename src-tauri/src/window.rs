@@ -62,30 +62,89 @@ fn chat_bubble_position(
     pet_size: (u32, u32),
     bubble_size: (u32, u32),
 ) -> (PetPosition, &'static str) {
-    let centered_x =
-        i64::from(pet_position.x) + i64::from(pet_size.0) / 2 - i64::from(bubble_size.0) / 2;
-    let above_y = i64::from(pet_position.y) - i64::from(bubble_size.1) - i64::from(BUBBLE_GAP);
-    let below_y = i64::from(pet_position.y) + i64::from(pet_size.1) + i64::from(BUBBLE_GAP);
-    let (preferred_y, placement) = if above_y >= i64::from(area.y) {
-        (above_y, "above")
-    } else {
-        (below_y, "below")
-    };
-    (
-        clamp_position(
-            PetPosition {
+    #[derive(Clone, Copy)]
+    struct Candidate {
+        position: PetPosition,
+        placement: &'static str,
+        space: i64,
+        required: i64,
+    }
+
+    let area_left = i64::from(area.x);
+    let area_top = i64::from(area.y);
+    let area_right = area_left + i64::from(area.width);
+    let area_bottom = area_top + i64::from(area.height);
+    let pet_left = i64::from(pet_position.x);
+    let pet_top = i64::from(pet_position.y);
+    let pet_right = pet_left + i64::from(pet_size.0);
+    let pet_bottom = pet_top + i64::from(pet_size.1);
+    let bubble_width = i64::from(bubble_size.0);
+    let bubble_height = i64::from(bubble_size.1);
+    let gap = i64::from(BUBBLE_GAP);
+    let centered_x = pet_left + i64::from(pet_size.0) / 2 - bubble_width / 2;
+    let centered_y = pet_top + i64::from(pet_size.1) / 2 - bubble_height / 2;
+    let candidates = [
+        Candidate {
+            position: PetPosition {
                 x: centered_x.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
-                y: preferred_y.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+                y: (pet_top - bubble_height - gap).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                    as i32,
             },
-            area,
-            bubble_size.0,
-            bubble_size.1,
-        ),
-        placement,
+            placement: "above",
+            space: pet_top - area_top,
+            required: bubble_height + gap,
+        },
+        Candidate {
+            position: PetPosition {
+                x: centered_x.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+                y: (pet_bottom + gap).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            },
+            placement: "below",
+            space: area_bottom - pet_bottom,
+            required: bubble_height + gap,
+        },
+        Candidate {
+            position: PetPosition {
+                x: (pet_left - bubble_width - gap).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                    as i32,
+                y: centered_y.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            },
+            placement: "left",
+            space: pet_left - area_left,
+            required: bubble_width + gap,
+        },
+        Candidate {
+            position: PetPosition {
+                x: (pet_right + gap).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+                y: centered_y.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            },
+            placement: "right",
+            space: area_right - pet_right,
+            required: bubble_width + gap,
+        },
+    ];
+    let fits = candidates
+        .iter()
+        .filter(|candidate| candidate.space >= candidate.required);
+    let candidate = fits
+        .max_by(|left, right| (left.space * right.required).cmp(&(right.space * left.required)))
+        .or_else(|| {
+            candidates.iter().max_by(|left, right| {
+                (left.space * right.required).cmp(&(right.space * left.required))
+            })
+        })
+        .expect("bubble placement always has four candidates");
+    (
+        clamp_position(candidate.position, area, bubble_size.0, bubble_size.1),
+        candidate.placement,
     )
 }
 
-fn position_chat_bubble(app: &AppHandle, only_if_visible: bool) -> Result<&'static str, String> {
+fn position_chat_bubble(
+    app: &AppHandle,
+    only_if_visible: bool,
+    requested_size: Option<(u32, u32)>,
+) -> Result<&'static str, String> {
     let pet = app
         .get_webview_window(PET_WINDOW)
         .ok_or_else(|| "Pet window is unavailable".to_string())?;
@@ -98,12 +157,18 @@ fn position_chat_bubble(app: &AppHandle, only_if_visible: bool) -> Result<&'stat
     let area = platform::work_area(&pet)?;
     let pet_position = get_pet_position(pet.clone())?;
     let pet_size = pet.outer_size().map_err(|error| error.to_string())?;
-    let bubble_size = bubble.outer_size().map_err(|error| error.to_string())?;
+    let bubble_size = match requested_size {
+        Some((width, height)) => (width, height),
+        None => {
+            let size = bubble.outer_size().map_err(|error| error.to_string())?;
+            (size.width, size.height)
+        }
+    };
     let (position, placement) = chat_bubble_position(
         area,
         pet_position,
         (pet_size.width, pet_size.height),
-        (bubble_size.width, bubble_size.height),
+        bubble_size,
     );
     bubble
         .set_position(Position::Physical(PhysicalPosition::new(
@@ -138,7 +203,7 @@ pub fn set_pet_position(window: WebviewWindow, x: i32, y: i32) -> Result<PetPosi
             position.x, position.y,
         )))
         .map_err(|error| error.to_string())?;
-    position_chat_bubble(window.app_handle(), true)?;
+    position_chat_bubble(window.app_handle(), true, None)?;
     Ok(position)
 }
 
@@ -170,7 +235,18 @@ fn resize_and_clamp(window: &WebviewWindow, logical_size: LogicalSize<f64>) -> R
 pub fn set_pet_window_size(window: WebviewWindow, pet_size_name: String) -> Result<(), String> {
     let size = pet_size(&pet_size_name)?;
     resize_and_clamp(&window, LogicalSize::new(size, size))?;
-    position_chat_bubble(window.app_handle(), true).map(|_| ())
+    position_chat_bubble(window.app_handle(), true, None).map(|_| ())
+}
+
+fn physical_bubble_size(
+    bubble: &WebviewWindow,
+    logical_size: (f64, f64),
+) -> Result<(u32, u32), String> {
+    let scale_factor = bubble.scale_factor().map_err(|error| error.to_string())?;
+    Ok((
+        (logical_size.0 * scale_factor).round().max(1.0) as u32,
+        (logical_size.1 * scale_factor).round().max(1.0) as u32,
+    ))
 }
 
 #[tauri::command]
@@ -184,7 +260,8 @@ pub fn open_chat_bubble(app: AppHandle) -> Result<String, String> {
             INTERACTIVE_BUBBLE_SIZE.1,
         )))
         .map_err(|error| error.to_string())?;
-    let placement = position_chat_bubble(&app, false)?;
+    let requested_size = physical_bubble_size(&bubble, INTERACTIVE_BUBBLE_SIZE)?;
+    let placement = position_chat_bubble(&app, false, Some(requested_size))?;
     bubble.show().map_err(|error| error.to_string())?;
     bubble.set_focus().map_err(|error| error.to_string())?;
     bubble
@@ -217,7 +294,9 @@ pub fn open_speech_bubble(
     let bubble = app
         .get_webview_window(CHAT_BUBBLE_WINDOW)
         .ok_or_else(|| "Chat bubble window is unavailable".to_string())?;
-    if bubble.is_visible().map_err(|error| error.to_string())? {
+    if bubble.is_visible().map_err(|error| error.to_string())?
+        && bubble.is_focused().map_err(|error| error.to_string())?
+    {
         return Ok(None);
     }
     bubble
@@ -226,13 +305,14 @@ pub fn open_speech_bubble(
             SPEECH_BUBBLE_SIZE.1,
         )))
         .map_err(|error| error.to_string())?;
-    let placement = position_chat_bubble(&app, false)?;
+    let requested_size = physical_bubble_size(&bubble, SPEECH_BUBBLE_SIZE)?;
+    let placement = position_chat_bubble(&app, false, Some(requested_size))?;
     bubble.show().map_err(|error| error.to_string())?;
     if let Err(error) = bubble.emit(
         BUBBLE_SHOW_SPEECH_EVENT,
         SpeechBubblePayload {
             text,
-            duration_ms: duration_ms.clamp(3_000, 8_000),
+            duration_ms: duration_ms.clamp(3_200, 20_000),
             source,
             placement: placement.to_string(),
         },
@@ -245,7 +325,7 @@ pub fn open_speech_bubble(
 
 #[tauri::command]
 pub fn sync_chat_bubble_position(app: AppHandle) -> Result<String, String> {
-    position_chat_bubble(&app, true).map(str::to_string)
+    position_chat_bubble(&app, true, None).map(str::to_string)
 }
 
 #[tauri::command]
@@ -294,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn places_bubble_above_pet_and_falls_back_below() {
+    fn places_bubble_near_pet_without_covering_it() {
         let area = WorkArea {
             x: 0,
             y: 25,
@@ -311,6 +391,15 @@ mod tests {
         assert_eq!(
             chat_bubble_position(area, PetPosition { x: 10, y: 30 }, (160, 160), (320, 176)),
             (PetPosition { x: 0, y: 192 }, "below")
+        );
+        assert_eq!(
+            chat_bubble_position(
+                area,
+                PetPosition { x: 1260, y: 380 },
+                (160, 160),
+                (320, 700)
+            ),
+            (PetPosition { x: 938, y: 110 }, "left")
         );
     }
 }

@@ -4,10 +4,17 @@
 
 Remi 是一个以桌面伙伴为交互载体、优先支持 macOS 的持久化个人 LLM Agent。项目使用 Tauri 2、React、TypeScript、Rust 和 SQLite 构建。
 
+## 项目截图
+
+| 桌面伙伴                                                                | 设置界面                                                       |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| ![Remi 桌面角色和对话气泡](docs/screenshots/remi-desktop-companion.png) | ![Remi 设置界面](docs/screenshots/remi-settings-interface.jpg) |
+
 ## 目前能力
 
 - 透明、置顶的 macOS 桌面角色，支持本地移动和切换 Pet Pack。
 - 统一 Agent Runtime：用户聊天与自主 Heartbeat 都经过同一运行时。
+- 用户回复和 Heartbeat 主动发言都会在角色附近显示气泡：不遮挡角色、不超出当前屏幕，并按文字长度决定停留时间。
 - 可配置 OpenAI-compatible Provider、API 地址和模型。
 - 通过可编辑的 `SOUL.md`、Pet State 和 Context Builder 保存身份与状态。
 - 支持重启后仍然保留的 Working、Semantic、Episodic 和 Relationship Memory。
@@ -25,7 +32,7 @@ Remi 是一个以桌面伙伴为交互载体、优先支持 macOS 的持久化�
 3. 添加 OpenAI-compatible Base URL、API Key 和一个或多个 Model ID。
 4. 启用 Provider，并为需要使用的模型选择 **Set Active**。
 
-API Key 只保存在当前进程内，不会写入 SQLite，也不会包含在 Companion Profile 导出文件中。
+API Key 安全保存在当前 macOS 用户的系统钥匙串中，退出并重新启动后仍然可用。它不会写入 SQLite，也不会包含在 Companion Profile 导出文件中。
 
 ### 使用环境变量
 

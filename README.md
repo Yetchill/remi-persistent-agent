@@ -4,10 +4,17 @@
 
 Remi is a macOS-first persistent personal LLM agent embodied as a desktop companion. It is built with Tauri 2, React, TypeScript, Rust, and SQLite.
 
+## Screenshots
+
+| Desktop companion                                                                        | Settings interface                                                       |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| ![Remi desktop companion and speech bubble](docs/screenshots/remi-desktop-companion.png) | ![Remi settings interface](docs/screenshots/remi-settings-interface.jpg) |
+
 ## Current capabilities
 
 - A transparent, always-on-top macOS desktop character with local movement and switchable Pet Packs.
 - A unified Agent Runtime for user chat and autonomous heartbeat decisions.
+- Reply and proactive speech bubbles that follow the character, avoid covering it, remain inside the current display, and stay visible according to message length.
 - Configurable OpenAI-compatible providers, endpoints, and models.
 - Persistent identity and state through an editable `SOUL.md`, Pet State, and context builder.
 - Working, Semantic, Episodic, and Relationship Memory that survives restarts.
@@ -25,7 +32,7 @@ Remi is a macOS-first persistent personal LLM agent embodied as a desktop compan
 3. Add an OpenAI-compatible base URL, API key, and one or more model IDs.
 4. Enable the Provider and choose **Set Active** for the model you want to use.
 
-API keys are held in process memory. They are not written to SQLite and are excluded from Companion Profile exports.
+API keys are stored in the current macOS user's Keychain, so they survive application restarts. They are never written to SQLite and are excluded from Companion Profile exports.
 
 ### With environment variables
 

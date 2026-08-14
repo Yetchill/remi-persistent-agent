@@ -8,8 +8,11 @@ describe("proactive bubble timing", () => {
   it("keeps short and long Unicode messages inside the display bounds", () => {
     expect(
       estimateSpeechBubbleDuration("辛苦啦 (｡･ω･｡) ✨"),
-    ).toBeGreaterThanOrEqual(3_000);
-    expect(estimateSpeechBubbleDuration("a".repeat(1_000))).toBe(8_000);
+    ).toBeGreaterThanOrEqual(3_200);
+    expect(estimateSpeechBubbleDuration("猫".repeat(60))).toBeGreaterThan(
+      estimateSpeechBubbleDuration("猫"),
+    );
+    expect(estimateSpeechBubbleDuration("a".repeat(1_000))).toBe(20_000);
   });
 
   it("limits proactive speech without breaking Unicode rendering", () => {

@@ -11,6 +11,38 @@ use uuid::Uuid;
 
 use crate::{database::Database, state::AppState, trace::LlmCallTrace};
 
+const KEYCHAIN_SERVICE: &str = "dev.remi.personal-agent.llm-provider";
+
+fn keychain_entry(provider_id: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, provider_id)
+        .map_err(|error| format!("Could not access the macOS Keychain: {error}"))
+}
+
+fn load_keychain_api_key(provider_id: &str) -> Result<Option<String>, String> {
+    match keychain_entry(provider_id)?.get_password() {
+        Ok(api_key) => Ok(Some(api_key)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(format!(
+            "Could not read the API key from macOS Keychain: {error}"
+        )),
+    }
+}
+
+fn save_keychain_api_key(provider_id: &str, api_key: &str) -> Result<(), String> {
+    keychain_entry(provider_id)?
+        .set_password(api_key)
+        .map_err(|error| format!("Could not save the API key to macOS Keychain: {error}"))
+}
+
+fn delete_keychain_api_key(provider_id: &str) -> Result<(), String> {
+    match keychain_entry(provider_id)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(format!(
+            "Could not delete the API key from macOS Keychain: {error}"
+        )),
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelConfig {
@@ -91,6 +123,18 @@ impl ProviderStore {
                 .find(|provider| provider.id == "environment")
         {
             api_keys.insert(provider.id.clone(), key);
+        }
+        for provider in &catalog.providers {
+            if api_keys.contains_key(&provider.id) {
+                continue;
+            }
+            match load_keychain_api_key(&provider.id) {
+                Ok(Some(api_key)) => {
+                    api_keys.insert(provider.id.clone(), api_key);
+                }
+                Ok(None) => {}
+                Err(error) => eprintln!("{error}"),
+            }
         }
         let mut store = Self { catalog, api_keys };
         store.refresh_key_flags();
@@ -215,6 +259,10 @@ pub fn save_provider(
     input: SaveProviderInput,
 ) -> Result<ProviderCatalog, String> {
     validate_provider(&input.provider)?;
+    let api_key = input.api_key.trim();
+    if !api_key.is_empty() {
+        save_keychain_api_key(&input.provider.id, api_key)?;
+    }
     state
         .database
         .save_provider(&input.provider)
@@ -223,10 +271,10 @@ pub fn save_provider(
         .provider
         .write()
         .map_err(|_| "Provider lock poisoned")?;
-    if !input.api_key.trim().is_empty() {
+    if !api_key.is_empty() {
         store
             .api_keys
-            .insert(input.provider.id.clone(), input.api_key.trim().to_string());
+            .insert(input.provider.id.clone(), api_key.to_string());
     }
     store.catalog = state
         .database
@@ -241,6 +289,7 @@ pub fn delete_provider(
     state: State<'_, AppState>,
     provider_id: String,
 ) -> Result<ProviderCatalog, String> {
+    delete_keychain_api_key(&provider_id)?;
     state
         .database
         .delete_provider(&provider_id)
