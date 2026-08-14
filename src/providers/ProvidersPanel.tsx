@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createProviderFromPreset,
   deleteProvider,
@@ -26,15 +26,36 @@ function newModel(): ModelConfig {
   };
 }
 
+export function reconcileProviderCatalogDraft(
+  current: ProviderCatalog,
+  incoming: ProviderCatalog,
+  dirty: boolean,
+): ProviderCatalog {
+  if (!dirty) return incoming;
+  return {
+    ...current,
+    activeProviderId: incoming.activeProviderId,
+    activeModelId: incoming.activeModelId,
+  };
+}
+
 export function ProvidersPanel({
-  catalog,
+  catalog: externalCatalog,
   onChange,
   onError,
 }: ProvidersPanelProps) {
+  const [catalog, setCatalog] = useState(externalCatalog);
   const [selectedId, setSelectedId] = useState<string>();
   const [preset, setPreset] = useState<ProviderPreset>("custom");
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const dirtyRef = useRef(false);
+
+  useEffect(() => {
+    setCatalog((current) =>
+      reconcileProviderCatalogDraft(current, externalCatalog, dirtyRef.current),
+    );
+  }, [externalCatalog]);
 
   useEffect(() => {
     if (
@@ -51,9 +72,21 @@ export function ProvidersPanel({
     [catalog.providers, selectedId],
   );
 
+  function updateDraft(next: ProviderCatalog) {
+    dirtyRef.current = true;
+    setCatalog(next);
+    onChange(next);
+  }
+
+  function acceptPersisted(next: ProviderCatalog) {
+    dirtyRef.current = false;
+    setCatalog(next);
+    onChange(next);
+  }
+
   function updateProvider(update: (current: ProviderConfig) => ProviderConfig) {
     if (!provider) return;
-    onChange({
+    updateDraft({
       ...catalog,
       providers: catalog.providers.map((item) =>
         item.id === provider.id ? { ...update(item), persisted: false } : item,
@@ -63,7 +96,7 @@ export function ProvidersPanel({
 
   function addProvider() {
     const next = createProviderFromPreset(preset);
-    onChange({ ...catalog, providers: [...catalog.providers, next] });
+    updateDraft({ ...catalog, providers: [...catalog.providers, next] });
     setSelectedId(next.id);
   }
 
@@ -72,7 +105,7 @@ export function ProvidersPanel({
     onError(undefined);
     try {
       const next = await saveProvider(current, apiKeys[current.id] ?? "");
-      onChange(next);
+      acceptPersisted(next);
       setApiKeys((keys) => ({ ...keys, [current.id]: "" }));
       return next;
     } catch (error) {
@@ -87,7 +120,7 @@ export function ProvidersPanel({
     const saved = await persist(current);
     if (!saved) return;
     try {
-      onChange(await setActiveModel(current.id, model.id));
+      acceptPersisted(await setActiveModel(current.id, model.id));
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
     }
@@ -100,13 +133,13 @@ export function ProvidersPanel({
       const providers = catalog.providers.filter(
         (item) => item.id !== providerId,
       );
-      onChange({ ...catalog, providers });
+      updateDraft({ ...catalog, providers });
       setSelectedId(catalog.activeProviderId ?? providers.at(0)?.id);
       return;
     }
     try {
       const next = await deleteProvider(providerId);
-      onChange(next);
+      acceptPersisted(next);
       setSelectedId(next.activeProviderId ?? next.providers.at(0)?.id);
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
